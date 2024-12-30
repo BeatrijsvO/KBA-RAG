@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
 from langchain.vectorstores import FAISS
@@ -7,9 +7,17 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from transformers import pipeline
 import os
 
-# Flask-app configuratie
-app = Flask(__name__)
-CORS(app)
+# Initialiseer de FastAPI-applicatie
+app = FastAPI()
+
+# CORS-configuratie
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configuratie voor FAISS opslaglocatie
 FAISS_DIR = Path("./faiss_store")
@@ -44,18 +52,14 @@ def get_vectorstore():
     return vectorstore
 
 # API-endpoints
-@app.route("/upload", methods=["POST"])
-def upload_documents():
+@app.post("/upload")
+async def upload_documents(files: list[UploadFile]):
     """Upload documenten en voeg toe aan de FAISS vectorstore."""
-    if 'files' not in request.files:
-        return jsonify({"error": "Geen bestanden ontvangen"}), 400
-
-    files = request.files.getlist("files")
     documents = []
 
     for file in files:
-        content = file.read().decode('utf-8')
-        texts = content.split('\n')
+        content = await file.read()
+        texts = content.decode('utf-8').split('\n')
         documents.extend(texts)
 
     document_texts = [text.strip() for text in documents if text.strip()]
@@ -70,19 +74,13 @@ def upload_documents():
     # Sla FAISS op naar bestand
     vectorstore.save_local(str(FAISS_DIR))
 
-    return jsonify({"message": f"{len(document_texts)} documenten succesvol geupload en verwerkt."})
+    return {"message": f"{len(document_texts)} documenten succesvol geupload en verwerkt."}
 
-@app.route("/kba", methods=["POST"])
-def answer_question():
+@app.post("/kba")
+async def answer_question(vraag: str):
     """Beantwoord vragen met behulp van de FAISS vectorstore en een NLP-model."""
-    if not request.is_json:
-        return jsonify({"error": "Verwacht JSON-data"}), 400
-
-    data = request.get_json()
-    vraag = data.get("vraag", "")
-
     if not vraag:
-        return jsonify({"error": "Geen vraag ontvangen."}), 400
+        raise HTTPException(status_code=400, detail="Geen vraag ontvangen.")
 
     try:
         vectorstore = get_vectorstore()
@@ -99,19 +97,14 @@ def answer_question():
         result = nlp_pipeline(prompt, max_length=200, truncation=True, num_return_sequences=1)
         antwoord = result[0]['generated_text']
 
-        return jsonify({"vraag": vraag, "antwoord": antwoord})
+        return {"vraag": vraag, "antwoord": antwoord}
 
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        return jsonify({"error": f"Interne fout: {str(e)}"}), 500
+        raise HTTPException(status_code=500, detail=f"Interne fout: {str(e)}")
 
-@app.route("/", methods=["GET"])
-def home():
+@app.get("/")
+async def home():
     """Controleer of de webservice draait."""
-    return jsonify({"status": "Webservice draait correct!"})
-
-# Start de applicatie via Waitress
-if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
+    return {"status": "Webservice draait correct!"}

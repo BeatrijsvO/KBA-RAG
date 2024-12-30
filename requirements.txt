@@ -1,7 +1,7 @@
-flask
-flask-cors
-waitress
+fastapi
+uvicorn
 sentence-transformers
+transformers
 langchain
 faiss-cpu
-transformers
+python-dotenv
