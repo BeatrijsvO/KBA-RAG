@@ -7,6 +7,9 @@ from langchain.embeddings import HuggingFaceEmbeddings
 from transformers import pipeline
 import os
 
+PORT = os.getenv("PORT")
+print(f"PORT-variabele: {PORT}")
+
 # Initialiseer de FastAPI-applicatie
 app = FastAPI()
 
